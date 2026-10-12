@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>单摆模拟器 · Week 05 · 王子轩 7902126144</title>
+<style>
+  :root {
+    --bg: #1a1a24;
+    --ink: #e8e8f0;
+    --dim: #8a8aa0;
+    --accent: #4fd1ff;
+    --panel: rgba(28, 28, 40, 0.86);
+    --line: rgba(120, 130, 170, 0.22);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+  }
+  #stage { display: block; width: 100vw; height: 100vh; }
+
+  .panel {
+    position: fixed; top: 18px; right: 18px; width: 268px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px 16px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  }
+  .panel h1 {
+    margin: 0 0 4px; font-size: 15px; letter-spacing: .5px; color: var(--accent);
+  }
+  .panel .sub { margin: 0 0 12px; font-size: 11px; color: var(--dim); }
+
+  .row { margin-bottom: 11px; }
+  .row label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--dim); margin-bottom: 5px;
+  }
+  .row label span { color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    width: 100%; height: 4px; -webkit-appearance: none; appearance: none;
+    background: rgba(120, 130, 170, 0.28); border-radius: 3px; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); cursor: pointer;
+    box-shadow: 0 0 8px rgba(79, 209, 255, 0.7);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border: none; border-radius: 50%;
+    background: var(--accent); cursor: pointer;
+  }
+
+  .btns { display: flex; gap: 8px; margin-top: 12px; }
+  button {
+    flex: 1; padding: 7px 0; font-size: 12px; cursor: pointer;
+    color: var(--ink); background: rgba(79, 209, 255, 0.12);
+    border: 1px solid rgba(79, 209, 255, 0.4); border-radius: 7px;
+    transition: background .15s;
+  }
+  button:hover { background: rgba(79, 209, 255, 0.26); }
+
+  .stats {
+    margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line);
+    font-size: 12px; line-height: 1.85; color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .stats b { color: var(--ink); font-weight: 600; }
+
+  /* 画布下方的实时参数控制条 */
+  .dock {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    justify-content: center; max-width: calc(100vw - 36px);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 18px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  }
+  .dock-row { display: flex; align-items: center; gap: 9px; }
+  .dock-row label { font-size: 12px; color: var(--dim); white-space: nowrap; }
+  .dock-row input[type=range] { width: 136px; }
+  .dock-row output {
+    font-size: 12px; color: var(--ink); min-width: 76px;
+    font-variant-numeric: tabular-nums;
+  }
+  .dock button { flex: none; padding: 7px 18px; }
+
+  .hint {
+    position: fixed; left: 18px; bottom: 16px;
+    font-size: 11px; color: var(--dim); line-height: 1.7;
+  }
+  .hint kbd {
+    background: rgba(120,130,170,.18); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px; font-size: 10px;
+  }
+  @media (max-width: 900px) { .hint { display: none; } }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div class="panel">
+  <h1>单摆模拟器 · Simple Pendulum</h1>
+  <p class="sub">Week 05 · 王子轩 · 7902126144</p>
+
+  <div class="row">
+    <label>摆长 L <span id="vL">200 px</span></label>
+    <input type="range" id="sL" min="100" max="350" step="1" value="200">
+  </div>
+  <div class="row">
+    <label>重力 g <span id="vG">9.80 m/s²</span></label>
+    <input type="range" id="sG" min="1" max="25" step="0.1" value="9.8">
+  </div>
+  <div class="row">
+    <label>初始摆角 θ₀ <span id="vA">45°</span></label>
+    <input type="range" id="sA" min="5" max="85" step="1" value="45">
+  </div>
+  <div class="row">
+    <label>空气阻尼 c <span id="vD">0.0000</span></label>
+    <input type="range" id="sD" min="0" max="0.01" step="0.0002" value="0">
+  </div>
+
+  <div class="btns">
+    <button id="btnReset">重置</button>
+    <button id="btnPause">暂停</button>
+    <button id="btnTrail">拖尾</button>
+  </div>
+
+  <div class="stats">
+    摆角 θ：<b id="oTheta">45.00°</b><br>
+    角速度 ω：<b id="oOmega">0.000 rad/s</b><br>
+    理论周期 T：<b id="oT">0.00 s</b><br>
+    机械能 E：<b id="oE">0.00 J</b><br>
+    运行时间：<b id="oTimer">0.0 s</b>
+  </div>
+</div>
+
+<div class="dock">
+  <div class="dock-row">
+    <label for="dL">摆长 L</label>
+    <input type="range" id="dL" min="100" max="350" step="1" value="200">
+    <output id="dvL">200 px</output>
+  </div>
+  <div class="dock-row">
+    <label for="dG">重力 g</label>
+    <input type="range" id="dG" min="1" max="25" step="0.1" value="9.8">
+    <output id="dvG">9.80 m/s²</output>
+  </div>
+  <div class="dock-row">
+    <label for="dD">阻尼 c</label>
+    <input type="range" id="dD" min="0" max="0.01" step="0.0002" value="0">
+    <output id="dvD">0.0000</output>
+  </div>
+  <button id="dockReset">重置摆动</button>
+</div>
+
+<div class="hint">
+  底部滑块与右侧面板双向同步 · <kbd>空格</kbd> 暂停/继续 · <kbd>R</kbd> 重置 · <kbd>T</kbd> 拖尾<br>
+  阻尼为微调系数（0.000~0.010），内部放大 20 倍以便肉眼看到衰减过程
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- 画布与高清适配 ----------
+  const canvas = document.getElementById("stage");
+  const ctx = canvas.getContext("2d");
+  let W = 0, H = 0, dpr = 1;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---------- 物理参数 ----------
+  // 屏幕像素与"米"的换算：100 px = 1 m。
+  // 这样 g = 9.8 m/s² 换算成 980 px/s²，单摆周期才与真实世界一致。
+  const PX_PER_M = 100;
+
+  const P = {
+    L: 200,          // 摆长（px）
+    g: 9.8,          // 重力加速度（m/s²）
+    angle0: 45,      // 初始摆角（度）
+    damping: 0.0     // 阻尼系数（滑块范围 0.000~0.010）
+  };
+
+  // 阻尼滑块上限仅 0.010，物理上衰减极慢；放大 20 倍后肉眼可清晰观察到衰减过程
+  const DAMP_SCALE = 20;
+
+  const state = {
+    theta: P.angle0 * Math.PI / 180,  // 当前摆角（弧度）
+    omega: 0,                          // 角速度（rad/s）
+    t: 0,                              // 已运行时间（s）
+    paused: false,
+    trail: true
+  };
+
+  const trail = [];          // 拖尾采样点
+  const TRAIL_MAX = 90;
+  const BALL_R = 17;
+
+  // ---------- 运动方程 ----------
+  // 单摆：θ'' = -(g_px / L) · sinθ - c · ω     （保留 sinθ，非小角近似）
+  function accel(theta, omega) {
+    const gPx = P.g * PX_PER_M;
+    return -(gPx / P.L) * Math.sin(theta) - P.damping * DAMP_SCALE * omega;
+  }
+
+  // 四阶龙格-库塔积分：比欧拉法稳定得多，长时间摆动不会越摆越大
+  function step(h) {
+    const y0 = state.theta, v0 = state.omega;
+    const a1 = accel(y0, v0);
+    const a2 = accel(y0 + 0.5 * h * v0, v0 + 0.5 * h * a1);
+    const a3 = accel(y0 + 0.5 * h * (v0 + 0.5 * h * a1), v0 + 0.5 * h * a2);
+    const a4 = accel(y0 + h * (v0 + 0.5 * h * a2), v0 + h * a3);
+
+    state.theta += h * (v0 + h * (a1 + a2 + a3) / 6);
+    state.omega += h * (a1 + 2 * a2 + 2 * a3 + a4) / 6;
+    state.t += h;
+  }
+
+  function reset() {
+    state.theta = P.angle0 * Math.PI / 180;
+    state.omega = 0;
+    state.t = 0;
+    trail.length = 0;
+  }
+
+  // ---------- 绘制 ----------
+  function drawGrid() {
+    const gap = 48;
+    ctx.save();
+    ctx.strokeStyle = "rgba(120, 130, 170, 0.07)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += gap) {
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke();
+    }
+    for (let y = 0; y < H; y += gap) {
+      ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawPendulum() {
+    const px = W / 2;                 // 悬挂点 x
+    const py = H * 0.20;              // 悬挂点 y
+    const x = px + P.L * Math.sin(state.theta);
+    const y = py + P.L * Math.cos(state.theta);
+
+    // 支架横梁
+    ctx.save();
+    ctx.strokeStyle = "rgba(150, 160, 200, 0.55)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(px - 90, py);
+    ctx.lineTo(px + 90, py);
+    ctx.stroke();
+
+    // 支架阴影柱
+    ctx.strokeStyle = "rgba(150, 160, 200, 0.22)";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(px, py - 16);
+    ctx.lineTo(px, py);
+    ctx.stroke();
+
+    // 平衡位置参考线（虚线）
+    ctx.setLineDash([4, 7]);
+    ctx.strokeStyle = "rgba(120, 130, 170, 0.28)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px, py + P.L + 40);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 圆弧轨迹参考
+    ctx.strokeStyle = "rgba(79, 209, 255, 0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, P.L, Math.PI / 2 - Math.abs(P.angle0 * Math.PI / 180),
+                          Math.PI / 2 + Math.abs(P.angle0 * Math.PI / 180));
+    ctx.stroke();
+
+    // 摆绳
+    ctx.strokeStyle = "rgba(200, 215, 245, 0.75)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.restore();
+
+    // 悬挂点
+    ctx.save();
+    ctx.fillStyle = "#9aa4c8";
+    ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // 摆球：径向渐变 + 外发光
+    const glow = ctx.createRadialGradient(x, y, 1, x, y, BALL_R * 3.4);
+    glow.addColorStop(0, "rgba(79, 209, 255, 0.42)");
+    glow.addColorStop(0.35, "rgba(79, 209, 255, 0.14)");
+    glow.addColorStop(1, "rgba(79, 209, 255, 0)");
+    ctx.save();
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(x, y, BALL_R * 3.4, 0, Math.PI * 2); ctx.fill();
+
+    ctx.shadowColor = "rgba(79, 209, 255, 0.95)";
+    ctx.shadowBlur = 26;
+    const body = ctx.createRadialGradient(x - BALL_R * 0.35, y - BALL_R * 0.4, BALL_R * 0.15, x, y, BALL_R);
+    body.addColorStop(0, "#eaffff");
+    body.addColorStop(0.45, "#7fe0ff");
+    body.addColorStop(1, "#1f9fd0");
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.arc(x, y, BALL_R, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // 角度弧线标注
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 214, 120, 0.65)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const r = 52;
+    const a0 = Math.PI / 2;
+    const a1 = Math.PI / 2 - state.theta;
+    ctx.arc(px, py, r, Math.min(a0, a1), Math.max(a0, a1));
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255, 214, 120, 0.85)";
+    ctx.font = "12px Segoe UI, Microsoft YaHei, sans-serif";
+    ctx.fillText((state.theta * 180 / Math.PI).toFixed(1) + "°",
+                 px + 14 * Math.sin(state.theta / 2), py + 34);
+    ctx.restore();
+
+    return { x: x, y: y };
+  }
+
+  function drawTrail(pos) {
+    trail.push({ x: pos.x, y: pos.y });
+    if (trail.length > TRAIL_MAX) trail.shift();
+    if (!state.trail) { trail.length = 0; return; }
+
+    ctx.save();
+    for (let i = 1; i < trail.length; i++) {
+      const k = i / trail.length;
+      ctx.strokeStyle = "rgba(79, 209, 255, " + (k * 0.34).toFixed(3) + ")";
+      ctx.lineWidth = 1 + k * 2.6;
+      ctx.beginPath();
+      ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+      ctx.lineTo(trail[i].x, trail[i].y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ---------- 数据面板 ----------
+  const $ = function (id) { return document.getElementById(id); };
+  function updateStats() {
+    $("oTheta").textContent = (state.theta * 180 / Math.PI).toFixed(2) + "°";
+    $("oOmega").textContent = state.omega.toFixed(3) + " rad/s";
+    const T = 2 * Math.PI * Math.sqrt(P.L / (P.g * PX_PER_M));
+    $("oT").textContent = T.toFixed(2) + " s";
+    const gPx = P.g * PX_PER_M;
+    const E = 0.5 * P.L * P.L * state.omega * state.omega + gPx * P.L * (1 - Math.cos(state.theta));
+    $("oE").textContent = (E / 10000).toFixed(2) + " J";
+    $("oTimer").textContent = state.t.toFixed(1) + " s";
+  }
+
+  // ---------- 动画主循环 ----------
+  const FIXED_DT = 1 / 240;   // 固定物理步长，保证不同帧率下表现一致
+  let last = performance.now();
+  let acc = 0;
+
+  function frame(now) {
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.25) dt = 0.25;          // 切后台回来时防止一次性补算爆炸
+
+    if (!state.paused) {
+      acc += dt;
+      while (acc >= FIXED_DT) {
+        step(FIXED_DT);
+        acc -= FIXED_DT;
+      }
+    }
+
+    ctx.fillStyle = "#1a1a24";
+    ctx.fillRect(0, 0, W, H);
+    drawGrid();
+    const pos = drawPendulum();
+    drawTrail(pos);
+    updateStats();
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- 交互 ----------
+  // 同一参数可绑定多个滑块（右侧面板 + 底部控制条），任意一处拖动都会双向同步
+  function bindGroup(sliderIds, labelIds, fmt, apply) {
+    const sliders = sliderIds.map($);
+    const labels = labelIds.map($);
+    const sync = function (source) {
+      const v = parseFloat(source.value);
+      sliders.forEach(function (s) { if (s !== source) s.value = v; });
+      const text = fmt(v);
+      labels.forEach(function (l) { l.textContent = text; });
+      apply(v);
+    };
+    sliders.forEach(function (s) {
+      s.addEventListener("input", function () { sync(s); });
+    });
+    sync(sliders[0]);
+  }
+
+  bindGroup(["sL", "dL"], ["vL", "dvL"],
+    function (v) { return v + " px"; },
+    function (v) { P.L = v; trail.length = 0; });
+
+  bindGroup(["sG", "dG"], ["vG", "dvG"],
+    function (v) { return v.toFixed(2) + " m/s²"; },
+    function (v) { P.g = v; trail.length = 0; });
+
+  bindGroup(["sD", "dD"], ["vD", "dvD"],
+    function (v) { return v.toFixed(4); },
+    function (v) { P.damping = v; });
+
+  bindGroup(["sA"], ["vA"],
+    function (v) { return v + "°"; },
+    function (v) { P.angle0 = v; reset(); });
+
+  $("btnReset").addEventListener("click", reset);
+
+  // 底部"重置摆动"：强制回到 45° 初始状态，并把右侧初始角滑块同步回 45°
+  $("dockReset").addEventListener("click", function () {
+    P.angle0 = 45;
+    $("sA").value = 45;
+    $("vA").textContent = "45°";
+    reset();
+  });
+  $("btnPause").addEventListener("click", function () {
+    state.paused = !state.paused;
+    this.textContent = state.paused ? "继续" : "暂停";
+  });
+  $("btnTrail").addEventListener("click", function () {
+    state.trail = !state.trail;
+    trail.length = 0;
+    this.textContent = state.trail ? "拖尾" : "无拖尾";
+  });
+
+  window.addEventListener("keydown", function (e) {
+    if (e.code === "Space") { e.preventDefault(); $("btnPause").click(); }
+    else if (e.key === "r" || e.key === "R") reset();
+    else if (e.key === "t" || e.key === "T") $("btnTrail").click();
+  });
+})();
+</script>
+</body>
+</html>
